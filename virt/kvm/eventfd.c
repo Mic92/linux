@@ -789,6 +789,13 @@ ioeventfd_check_collision(struct kvm *kvm, struct _ioeventfd *p)
 		       _p->datamatch == p->datamatch))))
 			return true;
 
+#ifdef CONFIG_KVM_IOREGION
+	if (p->bus_idx == KVM_MMIO_BUS || p->bus_idx == KVM_PIO_BUS)
+		if (kvm_ioregion_collides(kvm, p->bus_idx, p->addr,
+					  !p->length ? 8 : p->length))
+			return true;
+#endif
+
 	return false;
 }
 
