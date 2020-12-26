@@ -69,7 +69,7 @@ ioregion_release(struct ioregion *p)
 	kfree(p);
 }
 
-static void
+static bool
 pack_cmd(struct ioregionfd_cmd *cmd, u64 offset, u64 len, int opt, bool resp,
 	 u64 user_data, const void *val)
 {
@@ -93,13 +93,15 @@ pack_cmd(struct ioregionfd_cmd *cmd, u64 offset, u64 len, int opt, bool resp,
 		*((u64 *)&cmd->data) = val ? *(u64 *)val : 0;
 		break;
 	default:
-		break;
+		return false;
 	}
 	cmd->user_data = user_data;
 	cmd->offset = offset;
 	cmd->info |= opt;
 	cmd->info |= IOREGIONFD_SIZE(size);
 	cmd->info |= IOREGIONFD_RESP(resp);
+
+	return true;
 }
 
 static int
@@ -124,8 +126,11 @@ ioregion_read(struct kvm_vcpu *vcpu, struct kvm_io_device *this, gpa_t addr,
 		return -ENOMEM;
 	cmd = (struct ioregionfd_cmd *)buf;
 	resp = (struct ioregionfd_resp *)buf;
-	pack_cmd(cmd, addr - p->paddr, len, IOREGIONFD_CMD_READ,
-		 1, p->user_data, NULL);
+	if (!pack_cmd(cmd, addr - p->paddr, len, IOREGIONFD_CMD_READ,
+		      1, p->user_data, NULL)) {
+		kfree(buf);
+		return -EOPNOTSUPP;
+	}
 
 	ret = kernel_write(p->wf, cmd, sizeof(*cmd), 0);
 	if (ret != sizeof(*cmd)) {
@@ -182,8 +187,11 @@ ioregion_write(struct kvm_vcpu *vcpu, struct kvm_io_device *this, gpa_t addr,
 	if (!buf)
 		return -ENOMEM;
 	cmd = (struct ioregionfd_cmd *)buf;
-	pack_cmd(cmd, addr - p->paddr, len, IOREGIONFD_CMD_WRITE,
-		 p->posted_writes ? 0 : 1, p->user_data, val);
+	if (!pack_cmd(cmd, addr - p->paddr, len, IOREGIONFD_CMD_WRITE,
+		      p->posted_writes ? 0 : 1, p->user_data, val)) {
+		kfree(buf);
+		return -EOPNOTSUPP;
+	}
 
 	ret = kernel_write(p->wf, cmd, sizeof(*cmd), 0);
 	if (ret != sizeof(*cmd)) {
