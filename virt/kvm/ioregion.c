@@ -338,7 +338,6 @@ kvm_set_ioregion(struct kvm *kvm, struct kvm_ioregion *args)
 				      &p->dev);
 	if (ret < 0)
 		goto unlock_fail;
-	kvm_get_bus(kvm, bus_idx)->ioregionfd_count++;
 	list_add_tail(&p->list, get_ioregion_list(kvm, bus_idx));
 
 	mutex_unlock(&kvm->slots_lock);
@@ -358,7 +357,6 @@ static int
 kvm_rm_ioregion(struct kvm *kvm, struct kvm_ioregion *args)
 {
 	struct ioregion         *p, *tmp;
-	struct kvm_io_bus       *bus;
 	enum kvm_bus             bus_idx;
 	int                      ret = -ENOENT;
 	struct list_head        *ioregions;
@@ -375,9 +373,6 @@ kvm_rm_ioregion(struct kvm *kvm, struct kvm_ioregion *args)
 		if (p->paddr == args->guest_paddr  &&
 		    p->size == args->memory_size) {
 			kvm_io_bus_unregister_dev(kvm, bus_idx, &p->dev);
-			bus = kvm_get_bus(kvm, bus_idx);
-			if (bus)
-				bus->ioregionfd_count--;
 			ioregion_release(p);
 			ret = 0;
 			break;

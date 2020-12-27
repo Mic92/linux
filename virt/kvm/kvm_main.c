@@ -5187,9 +5187,12 @@ int kvm_io_bus_register_dev(struct kvm *kvm, enum kvm_bus bus_idx, gpa_t addr,
 	if (!bus)
 		return -ENOMEM;
 
-	/* exclude ioeventfd which is limited by maximum fd */
-	if (bus->dev_count - bus->ioeventfd_count > NR_IOBUS_DEVS - 1)
-		return -ENOSPC;
+	/* enforce hard limit if kmemcg is disabled and
+	 * exclude ioeventfd which is limited by maximum fd
+	 */
+	if (!memcg_kmem_enabled())
+		if (bus->dev_count - bus->ioeventfd_count > NR_IOBUS_DEVS - 1)
+			return -ENOSPC;
 
 	new_bus = kmalloc(struct_size(bus, range, bus->dev_count + 1),
 			  GFP_KERNEL_ACCOUNT);
