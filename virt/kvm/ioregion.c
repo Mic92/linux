@@ -42,15 +42,24 @@ kvm_ioregionfd_init(struct kvm *kvm)
 	INIT_LIST_HEAD(&kvm->ioregions_pio);
 }
 
+/* serialize ioregionfd cmds/replies in case
+ * different ioregions use same rfd
+ */
+struct ioregionfd {
+	struct file         *rf;
+	struct mutex         mutex;
+	struct kref          kref;
+};
+
 struct ioregion {
 	struct list_head     list;
 	u64                  paddr;
 	u64                  size;
-	struct file         *rf;
 	struct file         *wf;
 	u64                  user_data;
 	struct kvm_io_device dev;
 	bool                 posted_writes;
+	struct ioregionfd   *ctx;
 };
 
 static inline struct ioregion *
@@ -60,12 +69,21 @@ to_ioregion(struct kvm_io_device *dev)
 }
 
 /* assumes kvm->slots_lock held */
+static void ctx_free(struct kref *kref)
+{
+	struct ioregionfd *ctx = container_of(kref, struct ioregionfd, kref);
+
+	kfree(ctx);
+}
+
+/* assumes kvm->slots_lock held */
 static void
 ioregion_release(struct ioregion *p)
 {
-	fput(p->rf);
+	fput(p->ctx->rf);
 	fput(p->wf);
 	list_del(&p->list);
+	kref_put(&p->ctx->kref, ctx_free);
 	kfree(p);
 }
 
@@ -115,7 +133,7 @@ ioregion_read(struct kvm_vcpu *vcpu, struct kvm_io_device *this, gpa_t addr,
 	void *buf;
 	int ret = 0;
 
-	if ((p->rf->f_flags & O_NONBLOCK) || (p->wf->f_flags & O_NONBLOCK))
+	if ((p->ctx->rf->f_flags & O_NONBLOCK) || (p->wf->f_flags & O_NONBLOCK))
 		return -EINVAL;
 	if ((addr + len - 1) > (p->paddr + p->size - 1))
 		return -EINVAL;
@@ -132,16 +150,18 @@ ioregion_read(struct kvm_vcpu *vcpu, struct kvm_io_device *this, gpa_t addr,
 		return -EOPNOTSUPP;
 	}
 
+	mutex_lock_interruptible(&p->ctx->mutex);
+
 	ret = kernel_write(p->wf, cmd, sizeof(*cmd), 0);
 	if (ret != sizeof(*cmd)) {
-		kfree(buf);
-		return (ret < 0) ? ret : -EIO;
+		ret = (ret < 0) ? ret : -EIO;
+		goto out;
 	}
 	memset(buf, 0, buf_size);
-	ret = kernel_read(p->rf, resp, sizeof(*resp), 0);
+	ret = kernel_read(p->ctx->rf, resp, sizeof(*resp), 0);
 	if (ret != sizeof(*resp)) {
-		kfree(buf);
-		return (ret < 0) ? ret : -EIO;
+		ret = (ret < 0) ? ret : -EIO;
+		goto out;
 	}
 
 	switch (len) {
@@ -161,9 +181,13 @@ ioregion_read(struct kvm_vcpu *vcpu, struct kvm_io_device *this, gpa_t addr,
 		break;
 	}
 
+	ret = 0;
+
+out:
+	mutex_unlock(&p->ctx->mutex);
 	kfree(buf);
 
-	return 0;
+	return ret;
 }
 
 static int
@@ -177,7 +201,7 @@ ioregion_write(struct kvm_vcpu *vcpu, struct kvm_io_device *this, gpa_t addr,
 	void *buf;
 	int ret = 0;
 
-	if ((p->rf->f_flags & O_NONBLOCK) || (p->wf->f_flags & O_NONBLOCK))
+	if ((p->ctx->rf->f_flags & O_NONBLOCK) || (p->wf->f_flags & O_NONBLOCK))
 		return -EINVAL;
 	if ((addr + len - 1) > (p->paddr + p->size - 1))
 		return -EINVAL;
@@ -193,24 +217,31 @@ ioregion_write(struct kvm_vcpu *vcpu, struct kvm_io_device *this, gpa_t addr,
 		return -EOPNOTSUPP;
 	}
 
+	mutex_lock_interruptible(&p->ctx->mutex);
+
 	ret = kernel_write(p->wf, cmd, sizeof(*cmd), 0);
 	if (ret != sizeof(*cmd)) {
-		kfree(buf);
-		return (ret < 0) ? ret : -EIO;
+		ret = (ret < 0) ? ret : -EIO;
+		goto out;
 	}
 
 	if (!p->posted_writes) {
 		memset(buf, 0, buf_size);
 		resp = (struct ioregionfd_resp *)buf;
-		ret = kernel_read(p->rf, resp, sizeof(*resp), 0);
+		ret = kernel_read(p->ctx->rf, resp, sizeof(*resp), 0);
 		if (ret != sizeof(*resp)) {
-			kfree(buf);
-			return (ret < 0) ? ret : -EIO;
+			ret = (ret < 0) ? ret : -EIO;
+			goto out;
 		}
 	}
+
+	ret = 0;
+
+out:
+	mutex_unlock(&p->ctx->mutex);
 	kfree(buf);
 
-	return 0;
+	return ret;
 }
 
 /*
@@ -283,6 +314,33 @@ get_bus_from_flags(__u32 flags)
 	return KVM_MMIO_BUS;
 }
 
+/* assumes kvm->slots_lock held */
+static bool
+ioregion_get_ctx(struct kvm *kvm, struct ioregion *p, struct file *rf, int bus_idx)
+{
+	struct ioregion *_p;
+	struct list_head *ioregions;
+
+	ioregions = get_ioregion_list(kvm, bus_idx);
+	list_for_each_entry(_p, ioregions, list)
+		if (file_inode(_p->ctx->rf)->i_ino == file_inode(rf)->i_ino) {
+			p->ctx = _p->ctx;
+			kref_get(&p->ctx->kref);
+			return true;
+		}
+
+	p->ctx = kzalloc(sizeof(*p->ctx), GFP_KERNEL_ACCOUNT);
+	if (!p->ctx) {
+		kfree(p);
+		return false;
+	}
+	p->ctx->rf = rf;
+	mutex_init(&p->ctx->mutex);
+	kref_get(&p->ctx->kref);
+
+	return true;
+}
+
 int
 kvm_set_ioregion(struct kvm *kvm, struct kvm_ioregion *args)
 {
@@ -318,11 +376,10 @@ kvm_set_ioregion(struct kvm *kvm, struct kvm_ioregion *args)
 	}
 
 	INIT_LIST_HEAD(&p->list);
+	p->wf = wfile;
 	p->paddr = args->guest_paddr;
 	p->size = args->memory_size;
 	p->user_data = args->user_data;
-	p->rf = rfile;
-	p->wf = wfile;
 	is_posted_writes = args->flags & KVM_IOREGION_POSTED_WRITES;
 	p->posted_writes = is_posted_writes ? true : false;
 	bus_idx = get_bus_from_flags(args->flags);
@@ -333,6 +390,12 @@ kvm_set_ioregion(struct kvm *kvm, struct kvm_ioregion *args)
 		ret = -EEXIST;
 		goto unlock_fail;
 	}
+
+	if (!ioregion_get_ctx(kvm, p, rfile, bus_idx)) {
+		ret = -ENOMEM;
+		goto fail;
+	}
+
 	kvm_iodevice_init(&p->dev, &ioregion_ops);
 	ret = kvm_io_bus_register_dev(kvm, bus_idx, p->paddr, p->size,
 				      &p->dev);
