@@ -63,6 +63,7 @@ bcachefs-y		:=	\
 	recovery.o		\
 	reflink.o		\
 	replicas.o		\
+	sb-clean.o		\
 	sb-members.o		\
 	siphash.o		\
 	subvolume.o		\
