@@ -378,6 +378,82 @@ TEST_F(scoped_audit, connect_to_child)
 		_metadata->exit_code = KSFT_FAIL;
 }
 
+/*
+ * Simpler version of accept_scope.server_only, but with audit tests.  The
+ * parent (no domain) attempts to connect to the child's ACCEPT-scoped
+ * socket.  The denial is logged against the child's domain since it
+ * requested the restriction, even though the parent's syscall is the one
+ * that fails.
+ */
+TEST_F(scoped_audit, accept_from_parent)
+{
+	pid_t child;
+	int err_dgram, status;
+	int pipe_child[2], pipe_parent[2];
+	char buf;
+	int dgram_client;
+	struct audit_records records;
+
+	EXPECT_EQ(0, audit_count_records(self->audit_fd, &records));
+	EXPECT_EQ(0, records.access);
+	EXPECT_EQ(0, records.domain);
+
+	ASSERT_EQ(0, pipe2(pipe_child, O_CLOEXEC));
+	ASSERT_EQ(0, pipe2(pipe_parent, O_CLOEXEC));
+
+	child = fork();
+	ASSERT_LE(0, child);
+	if (child == 0) {
+		int dgram_server;
+
+		EXPECT_EQ(0, close(pipe_parent[1]));
+		EXPECT_EQ(0, close(pipe_child[0]));
+
+		create_scoped_domain(
+			_metadata,
+			LANDLOCK_SCOPE_ABSTRACT_UNIX_SOCKET_ACCEPT);
+
+		dgram_server = socket(AF_UNIX, SOCK_DGRAM, 0);
+		ASSERT_LE(0, dgram_server);
+		ASSERT_EQ(0, bind(dgram_server, &self->dgram_address.unix_addr,
+				  self->dgram_address.unix_addr_len));
+
+		ASSERT_EQ(1, write(pipe_child[1], ".", 1));
+		ASSERT_EQ(1, read(pipe_parent[0], &buf, 1));
+		EXPECT_EQ(0, close(dgram_server));
+		_exit(_metadata->exit_code);
+		return;
+	}
+	EXPECT_EQ(0, close(pipe_child[1]));
+	EXPECT_EQ(0, close(pipe_parent[0]));
+
+	dgram_client = socket(AF_UNIX, SOCK_DGRAM, 0);
+	ASSERT_LE(0, dgram_client);
+
+	ASSERT_EQ(1, read(pipe_child[0], &buf, 1));
+	err_dgram = connect(dgram_client, &self->dgram_address.unix_addr,
+			    self->dgram_address.unix_addr_len);
+	EXPECT_EQ(-1, err_dgram);
+	EXPECT_EQ(EPERM, errno);
+
+	EXPECT_EQ(
+		0,
+		audit_match_record(
+			self->audit_fd, AUDIT_LANDLOCK_ACCESS,
+			REGEX_LANDLOCK_PREFIX
+			" blockers=scope\\.abstract_unix_socket_accept path=" ABSTRACT_SOCKET_PATH_PREFIX
+			"[0-9A-F]\\+$",
+			NULL));
+
+	ASSERT_EQ(1, write(pipe_parent[1], ".", 1));
+	EXPECT_EQ(0, close(dgram_client));
+
+	ASSERT_EQ(child, waitpid(child, &status, 0));
+	if (WIFSIGNALED(status) || !WIFEXITED(status) ||
+	    WEXITSTATUS(status) != EXIT_SUCCESS)
+		_metadata->exit_code = KSFT_FAIL;
+}
+
 FIXTURE(scoped_vs_unscoped)
 {
 	struct service_fixture parent_stream_address, parent_dgram_address,
@@ -1141,6 +1217,306 @@ TEST(self_connect)
 	EXPECT_EQ(0, close(connected_socket));
 	EXPECT_EQ(0, close(non_connected_socket));
 
+	if (WIFSIGNALED(status) || !WIFEXITED(status) ||
+	    WEXITSTATUS(status) != EXIT_SUCCESS)
+		_metadata->exit_code = KSFT_FAIL;
+}
+
+/*
+ * Tests for LANDLOCK_SCOPE_ABSTRACT_UNIX_SOCKET_ACCEPT.
+ *
+ * Unlike the connect scope, this restricts processes outside the domain
+ * from connecting in to abstract sockets created inside the domain.
+ */
+
+FIXTURE(accept_scope)
+{
+	struct service_fixture stream_address, dgram_address;
+};
+
+FIXTURE_VARIANT(accept_scope)
+{
+	bool domain_both;
+	bool domain_client;
+	bool domain_server;
+};
+
+/*
+ *        Server scoped, client outside
+ *               .--------.
+ *   client ---> | server |   client -> server : deny
+ *               '--------'
+ */
+FIXTURE_VARIANT_ADD(accept_scope, server_only) {
+	.domain_both = false,
+	.domain_client = false,
+	.domain_server = true,
+};
+
+/*
+ *        Client scoped (with ACCEPT), server outside
+ *  .--------.
+ *  | client | ---> server   client -> server : allow
+ *  '--------'
+ *
+ * The ACCEPT scope on the client does not affect outbound connections.
+ */
+FIXTURE_VARIANT_ADD(accept_scope, client_only) {
+	.domain_both = false,
+	.domain_client = true,
+	.domain_server = false,
+};
+
+/*
+ *        Sibling domains
+ *  .--------.   .--------.
+ *  | client |-->| server |   client -> server : deny
+ *  '--------'   '--------'
+ */
+FIXTURE_VARIANT_ADD(accept_scope, sibling) {
+	.domain_both = false,
+	.domain_client = true,
+	.domain_server = true,
+};
+
+/*
+ *        Same inherited domain
+ *  .--------------------.
+ *  | client --> server  |   client -> server : allow
+ *  '--------------------'
+ */
+FIXTURE_VARIANT_ADD(accept_scope, inherited) {
+	.domain_both = true,
+	.domain_client = false,
+	.domain_server = false,
+};
+
+/*
+ *        Server in nested domain (descendant), client in ancestor
+ *  .---------------------.
+ *  |          .--------. |
+ *  | client ->| server | |   client -> server : deny
+ *  |          '--------' |
+ *  '---------------------'
+ *
+ * The ancestor is outside the server's nested ACCEPT scope.
+ */
+FIXTURE_VARIANT_ADD(accept_scope, nested_server) {
+	.domain_both = true,
+	.domain_client = false,
+	.domain_server = true,
+};
+
+/*
+ *        Client in nested domain (descendant), server in ancestor
+ *  .---------------------.
+ *  | .--------.          |
+ *  | | client |-> server |   client -> server : allow
+ *  | '--------'          |
+ *  '---------------------'
+ *
+ * Descendants are inside the server's ACCEPT scope.
+ */
+FIXTURE_VARIANT_ADD(accept_scope, nested_client) {
+	.domain_both = true,
+	.domain_client = true,
+	.domain_server = false,
+};
+
+FIXTURE_SETUP(accept_scope)
+{
+	drop_caps(_metadata);
+
+	memset(&self->stream_address, 0, sizeof(self->stream_address));
+	memset(&self->dgram_address, 0, sizeof(self->dgram_address));
+	set_unix_address(&self->stream_address, 0);
+	set_unix_address(&self->dgram_address, 1);
+}
+
+FIXTURE_TEARDOWN(accept_scope)
+{
+}
+
+/*
+ * Connection from a client (parent) to a server (child).  The server may
+ * enter an ACCEPT-scoped domain before binding, in which case the parent's
+ * connect() should fail unless it is in the same or an ancestor domain of
+ * the server.
+ */
+TEST_F(accept_scope, connect_to_scoped_server)
+{
+	pid_t child;
+	bool can_connect;
+	int err_stream, err_dgram, errno_stream, errno_dgram, status;
+	int pipe_child[2], pipe_parent[2];
+	char buf;
+	int stream_client, dgram_client;
+
+	/*
+	 * Connection succeeds iff the server has no ACCEPT-scoped layer
+	 * that excludes the client.  In nested_client the server's only
+	 * ACCEPT-scoped layer is the shared one, which the client inherits.
+	 */
+	can_connect = !variant->domain_server;
+
+	ASSERT_EQ(0, pipe2(pipe_child, O_CLOEXEC));
+	ASSERT_EQ(0, pipe2(pipe_parent, O_CLOEXEC));
+
+	if (variant->domain_both) {
+		create_scoped_domain(
+			_metadata,
+			LANDLOCK_SCOPE_ABSTRACT_UNIX_SOCKET_ACCEPT);
+		if (!__test_passed(_metadata))
+			return;
+	}
+
+	child = fork();
+	ASSERT_LE(0, child);
+	if (child == 0) {
+		int stream_server, dgram_server;
+
+		EXPECT_EQ(0, close(pipe_parent[1]));
+		EXPECT_EQ(0, close(pipe_child[0]));
+
+		if (variant->domain_server)
+			create_scoped_domain(
+				_metadata,
+				LANDLOCK_SCOPE_ABSTRACT_UNIX_SOCKET_ACCEPT);
+
+		/* Waits for the client to be in its domain, if any. */
+		ASSERT_EQ(1, read(pipe_parent[0], &buf, 1));
+
+		stream_server = socket(AF_UNIX, SOCK_STREAM, 0);
+		ASSERT_LE(0, stream_server);
+		dgram_server = socket(AF_UNIX, SOCK_DGRAM, 0);
+		ASSERT_LE(0, dgram_server);
+
+		ASSERT_EQ(0,
+			  bind(stream_server,
+			       &self->stream_address.unix_addr,
+			       self->stream_address.unix_addr_len));
+		ASSERT_EQ(0, bind(dgram_server,
+				  &self->dgram_address.unix_addr,
+				  self->dgram_address.unix_addr_len));
+		ASSERT_EQ(0, listen(stream_server, backlog));
+
+		/* Signals to the client that the server is listening. */
+		ASSERT_EQ(1, write(pipe_child[1], ".", 1));
+
+		/* Waits for the client to finish testing. */
+		ASSERT_EQ(1, read(pipe_parent[0], &buf, 1));
+		EXPECT_EQ(0, close(stream_server));
+		EXPECT_EQ(0, close(dgram_server));
+		_exit(_metadata->exit_code);
+		return;
+	}
+	EXPECT_EQ(0, close(pipe_child[1]));
+	EXPECT_EQ(0, close(pipe_parent[0]));
+
+	if (variant->domain_client)
+		create_scoped_domain(
+			_metadata,
+			LANDLOCK_SCOPE_ABSTRACT_UNIX_SOCKET_ACCEPT);
+
+	/* Signals to the server that the client is in its domain. */
+	ASSERT_EQ(1, write(pipe_parent[1], ".", 1));
+
+	stream_client = socket(AF_UNIX, SOCK_STREAM, 0);
+	ASSERT_LE(0, stream_client);
+	dgram_client = socket(AF_UNIX, SOCK_DGRAM, 0);
+	ASSERT_LE(0, dgram_client);
+
+	/* Waits for the server to listen. */
+	ASSERT_EQ(1, read(pipe_child[0], &buf, 1));
+
+	err_stream = connect(stream_client, &self->stream_address.unix_addr,
+			     self->stream_address.unix_addr_len);
+	errno_stream = errno;
+	err_dgram = sendto(dgram_client, ".", 1, 0,
+			   &self->dgram_address.unix_addr,
+			   self->dgram_address.unix_addr_len);
+	errno_dgram = errno;
+
+	if (can_connect) {
+		EXPECT_EQ(0, err_stream);
+		EXPECT_EQ(1, err_dgram);
+	} else {
+		EXPECT_EQ(-1, err_stream);
+		EXPECT_EQ(EPERM, errno_stream);
+		EXPECT_EQ(-1, err_dgram);
+		EXPECT_EQ(EPERM, errno_dgram);
+	}
+
+	/* Signals to the server to clean up. */
+	ASSERT_EQ(1, write(pipe_parent[1], ".", 1));
+
+	EXPECT_EQ(0, close(stream_client));
+	EXPECT_EQ(0, close(dgram_client));
+
+	ASSERT_EQ(child, waitpid(child, &status, 0));
+	if (WIFSIGNALED(status) || !WIFEXITED(status) ||
+	    WEXITSTATUS(status) != EXIT_SUCCESS)
+		_metadata->exit_code = KSFT_FAIL;
+}
+
+/*
+ * A socket bound before entering the ACCEPT-scoped domain is not covered:
+ * the f_cred captured at socket creation has no Landlock domain.  This
+ * mirrors the existing connect-scope semantics for sockets created before
+ * sandboxing.
+ */
+TEST(accept_scope_socket_before_domain)
+{
+	struct service_fixture addr;
+	int server, status;
+	int pipe_child[2], pipe_parent[2];
+	char buf;
+	pid_t child;
+
+	drop_caps(_metadata);
+	memset(&addr, 0, sizeof(addr));
+	set_unix_address(&addr, 0);
+
+	ASSERT_EQ(0, pipe2(pipe_child, O_CLOEXEC));
+	ASSERT_EQ(0, pipe2(pipe_parent, O_CLOEXEC));
+
+	child = fork();
+	ASSERT_LE(0, child);
+	if (child == 0) {
+		EXPECT_EQ(0, close(pipe_parent[1]));
+		EXPECT_EQ(0, close(pipe_child[0]));
+
+		/* Creates and binds the socket before entering the domain. */
+		server = socket(AF_UNIX, SOCK_STREAM, 0);
+		ASSERT_LE(0, server);
+		ASSERT_EQ(0,
+			  bind(server, &addr.unix_addr, addr.unix_addr_len));
+		ASSERT_EQ(0, listen(server, backlog));
+
+		create_scoped_domain(
+			_metadata,
+			LANDLOCK_SCOPE_ABSTRACT_UNIX_SOCKET_ACCEPT);
+
+		ASSERT_EQ(1, write(pipe_child[1], ".", 1));
+		ASSERT_EQ(1, read(pipe_parent[0], &buf, 1));
+		EXPECT_EQ(0, close(server));
+		_exit(_metadata->exit_code);
+		return;
+	}
+	EXPECT_EQ(0, close(pipe_child[1]));
+	EXPECT_EQ(0, close(pipe_parent[0]));
+
+	ASSERT_EQ(1, read(pipe_child[0], &buf, 1));
+
+	/* The parent has no domain and the socket's f_cred has no domain. */
+	server = socket(AF_UNIX, SOCK_STREAM, 0);
+	ASSERT_LE(0, server);
+	EXPECT_EQ(0, connect(server, &addr.unix_addr, addr.unix_addr_len));
+	EXPECT_EQ(0, close(server));
+
+	ASSERT_EQ(1, write(pipe_parent[1], ".", 1));
+
+	ASSERT_EQ(child, waitpid(child, &status, 0));
 	if (WIFSIGNALED(status) || !WIFEXITED(status) ||
 	    WEXITSTATUS(status) != EXIT_SUCCESS)
 		_metadata->exit_code = KSFT_FAIL;
