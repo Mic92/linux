@@ -232,14 +232,19 @@ static bool domain_is_scoped(const struct landlock_ruleset *const client,
 	return false;
 }
 
+static const struct cred *sock_owner_cred(struct sock *const other)
+{
+	/* The credentials will not change. */
+	lockdep_assert_held(&unix_sk(other)->lock);
+	return other->sk_socket->file->f_cred;
+}
+
 static bool sock_is_scoped(struct sock *const other,
 			   const struct landlock_ruleset *const domain)
 {
 	const struct landlock_ruleset *dom_other;
 
-	/* The credentials will not change. */
-	lockdep_assert_held(&unix_sk(other)->lock);
-	dom_other = landlock_cred(other->sk_socket->file->f_cred)->domain;
+	dom_other = landlock_cred(sock_owner_cred(other))->domain;
 	return domain_is_scoped(domain, dom_other,
 				LANDLOCK_SCOPE_ABSTRACT_UNIX_SOCKET);
 }
@@ -262,9 +267,22 @@ static const struct access_masks unix_scope = {
 	.scope = LANDLOCK_SCOPE_ABSTRACT_UNIX_SOCKET,
 };
 
-static int hook_unix_stream_connect(struct sock *const sock,
-				    struct sock *const other,
-				    struct sock *const newsk)
+static const struct access_masks unix_accept_scope = {
+	.scope = LANDLOCK_SCOPE_ABSTRACT_UNIX_SOCKET_ACCEPT,
+};
+
+/**
+ * unix_check_connect - Check outbound abstract UNIX socket access
+ *
+ * @other: The listening/receiving socket.
+ *
+ * Denies connect/send if the current task has a domain scoped with
+ * %LANDLOCK_SCOPE_ABSTRACT_UNIX_SOCKET and @other was created outside
+ * that domain.
+ *
+ * Returns: 0 if access is allowed, -EPERM otherwise.
+ */
+static int unix_check_connect(struct sock *const other)
 {
 	size_t handle_layer;
 	const struct landlock_cred_security *const subject =
@@ -273,9 +291,6 @@ static int hook_unix_stream_connect(struct sock *const sock,
 
 	/* Quick return for non-landlocked tasks. */
 	if (!subject)
-		return 0;
-
-	if (!is_abstract_socket(other))
 		return 0;
 
 	if (!sock_is_scoped(other, subject->domain))
@@ -294,16 +309,74 @@ static int hook_unix_stream_connect(struct sock *const sock,
 	return -EPERM;
 }
 
-static int hook_unix_may_send(struct socket *const sock,
-			      struct socket *const other)
+/**
+ * unix_check_accept - Check inbound abstract UNIX socket access
+ *
+ * @other: The listening/receiving socket.
+ *
+ * Denies connect/send if @other was created by a task whose domain is
+ * scoped with %LANDLOCK_SCOPE_ABSTRACT_UNIX_SOCKET_ACCEPT and the current
+ * task is outside that domain.  The check mirrors unix_check_connect()
+ * with the client and server roles swapped, similar to how
+ * hook_ptrace_traceme() inverts hook_ptrace_access_check().
+ *
+ * Returns: 0 if access is allowed, -EPERM otherwise.
+ */
+static int unix_check_accept(struct sock *const other)
 {
 	size_t handle_layer;
 	const struct landlock_cred_security *const subject =
-		landlock_get_applicable_subject(current_cred(), unix_scope,
+		landlock_get_applicable_subject(sock_owner_cred(other),
+						unix_accept_scope,
 						&handle_layer);
 
+	/* Quick return for sockets not owned by an accept-scoped domain. */
 	if (!subject)
 		return 0;
+
+	if (!domain_is_scoped(subject->domain,
+			      landlock_get_current_domain(),
+			      LANDLOCK_SCOPE_ABSTRACT_UNIX_SOCKET_ACCEPT))
+		return 0;
+
+	/*
+	 * Log against the socket owner's domain: it requested the
+	 * restriction, so it is the cause of the denial even though the
+	 * blocked syscall belongs to the connecting task.
+	 */
+	landlock_log_denial(subject, &(struct landlock_request) {
+		.type = LANDLOCK_REQUEST_SCOPE_ABSTRACT_UNIX_SOCKET_ACCEPT,
+		.audit = {
+			.type = LSM_AUDIT_DATA_NET,
+			.u.net = &(struct lsm_network_audit) {
+				.sk = other,
+			},
+		},
+		.layer_plus_one = handle_layer + 1,
+	});
+	return -EPERM;
+}
+
+static int hook_unix_stream_connect(struct sock *const sock,
+				    struct sock *const other,
+				    struct sock *const newsk)
+{
+	int err;
+
+	if (!is_abstract_socket(other))
+		return 0;
+
+	err = unix_check_connect(other);
+	if (err)
+		return err;
+
+	return unix_check_accept(other);
+}
+
+static int hook_unix_may_send(struct socket *const sock,
+			      struct socket *const other)
+{
+	int err;
 
 	/*
 	 * Checks if this datagram socket was already allowed to be connected
@@ -315,20 +388,11 @@ static int hook_unix_may_send(struct socket *const sock,
 	if (!is_abstract_socket(other->sk))
 		return 0;
 
-	if (!sock_is_scoped(other->sk, subject->domain))
-		return 0;
+	err = unix_check_connect(other->sk);
+	if (err)
+		return err;
 
-	landlock_log_denial(subject, &(struct landlock_request) {
-		.type = LANDLOCK_REQUEST_SCOPE_ABSTRACT_UNIX_SOCKET,
-		.audit = {
-			.type = LSM_AUDIT_DATA_NET,
-			.u.net = &(struct lsm_network_audit) {
-				.sk = other->sk,
-			},
-		},
-		.layer_plus_one = handle_layer + 1,
-	});
-	return -EPERM;
+	return unix_check_accept(other->sk);
 }
 
 static const struct access_masks signal_scope = {

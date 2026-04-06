@@ -375,10 +375,16 @@ struct landlock_net_port_attr {
  *   related Landlock domain (e.g., a parent domain or a non-sandboxed process).
  * - %LANDLOCK_SCOPE_SIGNAL: Restrict a sandboxed process from sending a signal
  *   to another process outside the domain.
+ * - %LANDLOCK_SCOPE_ABSTRACT_UNIX_SOCKET_ACCEPT: Restrict processes outside the
+ *   related Landlock domain from connecting to an abstract UNIX socket created
+ *   by a sandboxed process.  Unlike %LANDLOCK_SCOPE_ABSTRACT_UNIX_SOCKET, this
+ *   restricts inbound connections rather than outbound ones.  Support added in
+ *   Landlock ABI version 9.
  */
 /* clang-format off */
 #define LANDLOCK_SCOPE_ABSTRACT_UNIX_SOCKET		(1ULL << 0)
 #define LANDLOCK_SCOPE_SIGNAL		                (1ULL << 1)
+#define LANDLOCK_SCOPE_ABSTRACT_UNIX_SOCKET_ACCEPT	(1ULL << 2)
 /* clang-format on*/
 
 #endif /* _UAPI_LINUX_LANDLOCK_H */
