@@ -8,7 +8,7 @@ Landlock: unprivileged access control
 =====================================
 
 :Author: Mickaël Salaün
-:Date: March 2026
+:Date: April 2026
 
 The goal of Landlock is to enable restriction of ambient rights (e.g. global
 filesystem or network access) for a set of processes.  Because Landlock
@@ -83,7 +83,8 @@ to be explicit about the denied-by-default access rights.
             LANDLOCK_ACCESS_NET_CONNECT_TCP,
         .scoped =
             LANDLOCK_SCOPE_ABSTRACT_UNIX_SOCKET |
-            LANDLOCK_SCOPE_SIGNAL,
+            LANDLOCK_SCOPE_SIGNAL |
+            LANDLOCK_SCOPE_ABSTRACT_UNIX_SOCKET_ACCEPT,
     };
 
 Because we may not know which kernel version an application will be executed
@@ -127,6 +128,12 @@ version, and only use the available subset of access rights:
         /* Removes LANDLOCK_SCOPE_* for ABI < 6 */
         ruleset_attr.scoped &= ~(LANDLOCK_SCOPE_ABSTRACT_UNIX_SOCKET |
                                  LANDLOCK_SCOPE_SIGNAL);
+        __attribute__((fallthrough));
+    case 6:
+    case 7:
+    case 8:
+        /* Removes LANDLOCK_SCOPE_ABSTRACT_UNIX_SOCKET_ACCEPT for ABI < 9 */
+        ruleset_attr.scoped &= ~LANDLOCK_SCOPE_ABSTRACT_UNIX_SOCKET_ACCEPT;
     }
 
 This enables the creation of an inclusive ruleset that will contain our rules.
@@ -368,6 +375,29 @@ The operations which can be scoped are:
 
     A :manpage:`sendto(2)` on a socket which was previously connected will not
     be restricted.  This works for both datagram and stream sockets.
+
+``LANDLOCK_SCOPE_ABSTRACT_UNIX_SOCKET_ACCEPT``
+    This limits the set of processes which can :manpage:`connect(2)` to an
+    abstract :manpage:`unix(7)` socket created by the sandboxed process to
+    those in the same or a nested Landlock domain.  Unlike
+    ``LANDLOCK_SCOPE_ABSTRACT_UNIX_SOCKET``, this restricts inbound
+    connections rather than outbound ones.
+
+    This is useful for sandboxes that must keep network access (and so
+    cannot enter a separate network namespace) but still need to prevent
+    processes on the host from reaching abstract sockets bound inside the
+    sandbox, since abstract addresses are not subject to filesystem
+    permissions or mount-namespace isolation.
+
+    The restriction is keyed on the credentials captured at
+    :manpage:`socket(2)` time.  A socket created before
+    :manpage:`landlock_restrict_self(2)` is called is therefore not
+    covered, and a socket inherited or passed across a domain boundary
+    keeps the scope of its creator.
+
+    Connections from processes in the same domain or in a nested domain are
+    permitted, so abstract sockets remain usable for IPC inside the
+    sandbox.
 
 IPC scoping does not support exceptions via :manpage:`landlock_add_rule(2)`.
 If an operation is scoped within a domain, no rules can be added to allow access
@@ -699,6 +729,20 @@ Starting with the Landlock ABI version 8, it is now possible to
 enforce Landlock rulesets across all threads of the calling process
 using the ``LANDLOCK_RESTRICT_SELF_TSYNC`` flag passed to
 sys_landlock_restrict_self().
+
+Abstract UNIX socket accept (ABI < 9)
+-------------------------------------
+
+With ABI version 8 and earlier, ``LANDLOCK_SCOPE_ABSTRACT_UNIX_SOCKET``
+only restricts a sandboxed process from connecting out to abstract
+sockets created outside its domain.  Processes outside the domain can
+still connect in to abstract sockets created by the sandboxed process.
+
+Starting with the Landlock ABI version 9, it is possible to also
+restrict these inbound connections by setting
+``LANDLOCK_SCOPE_ABSTRACT_UNIX_SOCKET_ACCEPT`` in the ``scoped`` ruleset
+attribute.  Set both flags to fully isolate a domain's abstract
+sockets in both directions.
 
 .. _kernel_support:
 
