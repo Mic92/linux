@@ -1307,6 +1307,90 @@ static const struct regulator_desc axp15060_regulators[] = {
 	AXP_DESC_FIXED(AXP15060, RTC_LDO, "rtc-ldo", NULL, 1800),
 };
 
+/*
+ * AXP2101 DCDC2/DCDC3: 500-1200 mV @ 10 mV/step, 1220-1540 mV @ 20 mV/step.
+ * Register addresses and voltage tables from the Allwinner BSP 4.9 driver
+ * (drivers/power/supply/axp/axp2101/axp2101-regu.c).
+ */
+static const struct linear_range axp2101_dcdc234_ranges[] = {
+	REGULATOR_LINEAR_RANGE(500000,  0, 70, 10000),
+	REGULATOR_LINEAR_RANGE(1220000, 71, 87, 20000),
+};
+
+#define AXP2101_DCDC23_NUM_VOLTAGES	88
+
+/*
+ * AXP2101 DCDC4: 500-1200 mV @ 10 mV/step, 1220-1840 mV @ 20 mV/step.
+ */
+static const struct linear_range axp2101_dcdc4_ranges[] = {
+	REGULATOR_LINEAR_RANGE(500000,   0,  70, 10000),
+	REGULATOR_LINEAR_RANGE(1220000, 71, 102, 20000),
+};
+
+#define AXP2101_DCDC4_NUM_VOLTAGES	103
+
+/*
+ * AXP2101 DCDC5: 1400-3700 mV @ 100 mV/step, plus a dedicated 1200 mV
+ * setting at selector 0x19 (the power-on default on some boards).
+ */
+static const struct linear_range axp2101_dcdc5_ranges[] = {
+	REGULATOR_LINEAR_RANGE(1400000, 0x00, 0x17, 100000),
+	REGULATOR_LINEAR_RANGE(1200000, 0x19, 0x19, 0),
+};
+
+#define AXP2101_DCDC5_NUM_VOLTAGES	26
+#define AXP2101_DCDC_V_OUT_MASK		GENMASK(6, 0)
+#define AXP2101_LDO_V_OUT_MASK		GENMASK(4, 0)
+
+static const struct regulator_desc axp2101_regulators[] = {
+	AXP_DESC(AXP2101, DCDC1, "dcdc1", "vin1", 1500, 3400, 100,
+		 AXP2101_DCDC1_CONTROL, AXP2101_LDO_V_OUT_MASK,
+		 AXP2101_DCDC_OUTPUT_CONTROL, BIT(0)),
+	AXP_DESC_RANGES(AXP2101, DCDC2, "dcdc2", "vin2",
+			axp2101_dcdc234_ranges, AXP2101_DCDC23_NUM_VOLTAGES,
+			AXP2101_DCDC2_CONTROL, AXP2101_DCDC_V_OUT_MASK,
+			AXP2101_DCDC_OUTPUT_CONTROL, BIT(1)),
+	AXP_DESC_RANGES(AXP2101, DCDC3, "dcdc3", "vin3",
+			axp2101_dcdc234_ranges, AXP2101_DCDC23_NUM_VOLTAGES,
+			AXP2101_DCDC3_CONTROL, AXP2101_DCDC_V_OUT_MASK,
+			AXP2101_DCDC_OUTPUT_CONTROL, BIT(2)),
+	AXP_DESC_RANGES(AXP2101, DCDC4, "dcdc4", "vin4",
+			axp2101_dcdc4_ranges, AXP2101_DCDC4_NUM_VOLTAGES,
+			AXP2101_DCDC4_CONTROL, AXP2101_DCDC_V_OUT_MASK,
+			AXP2101_DCDC_OUTPUT_CONTROL, BIT(3)),
+	AXP_DESC_RANGES(AXP2101, DCDC5, "dcdc5", "vin5",
+			axp2101_dcdc5_ranges, AXP2101_DCDC5_NUM_VOLTAGES,
+			AXP2101_DCDC5_CONTROL, AXP2101_LDO_V_OUT_MASK,
+			AXP2101_DCDC_OUTPUT_CONTROL, BIT(4)),
+	AXP_DESC(AXP2101, ALDO1, "aldo1", "aldoin", 500, 3500, 100,
+		 AXP2101_ALDO1_CONTROL, AXP2101_LDO_V_OUT_MASK,
+		 AXP2101_LDO_EN_CFG0, BIT(0)),
+	AXP_DESC(AXP2101, ALDO2, "aldo2", "aldoin", 500, 3500, 100,
+		 AXP2101_ALDO2_CONTROL, AXP2101_LDO_V_OUT_MASK,
+		 AXP2101_LDO_EN_CFG0, BIT(1)),
+	AXP_DESC(AXP2101, ALDO3, "aldo3", "aldoin", 500, 3500, 100,
+		 AXP2101_ALDO3_CONTROL, AXP2101_LDO_V_OUT_MASK,
+		 AXP2101_LDO_EN_CFG0, BIT(2)),
+	AXP_DESC(AXP2101, ALDO4, "aldo4", "aldoin", 500, 3400, 100,
+		 AXP2101_ALDO4_CONTROL, AXP2101_LDO_V_OUT_MASK,
+		 AXP2101_LDO_EN_CFG0, BIT(3)),
+	AXP_DESC(AXP2101, BLDO1, "bldo1", "bldoin", 500, 3500, 100,
+		 AXP2101_BLDO1_CONTROL, AXP2101_LDO_V_OUT_MASK,
+		 AXP2101_LDO_EN_CFG0, BIT(4)),
+	AXP_DESC(AXP2101, BLDO2, "bldo2", "bldoin", 500, 3500, 100,
+		 AXP2101_BLDO2_CONTROL, AXP2101_LDO_V_OUT_MASK,
+		 AXP2101_LDO_EN_CFG0, BIT(5)),
+	AXP_DESC(AXP2101, CPUSLDO, "cpusldo", NULL, 500, 1400, 50,
+		 AXP2101_CPUSLDO_CONTROL, AXP2101_LDO_V_OUT_MASK,
+		 AXP2101_LDO_EN_CFG0, BIT(6)),
+	AXP_DESC(AXP2101, DLDO1, "dldo1", "dldoin", 500, 3500, 100,
+		 AXP2101_DLDO1_CONTROL, AXP2101_LDO_V_OUT_MASK,
+		 AXP2101_LDO_EN_CFG0, BIT(7)),
+	AXP_DESC(AXP2101, DLDO2, "dldo2", "dldoin", 500, 1400, 50,
+		 AXP2101_DLDO2_CONTROL, AXP2101_LDO_V_OUT_MASK,
+		 AXP2101_LDO_EN_CFG1, BIT(0)),
+};
+
 static int axp20x_set_dcdc_freq(struct platform_device *pdev, u32 dcdcfreq)
 {
 	struct axp20x_dev *axp20x = dev_get_drvdata(pdev->dev.parent);
@@ -1349,6 +1433,7 @@ static int axp20x_set_dcdc_freq(struct platform_device *pdev, u32 dcdcfreq)
 	case AXP313A_ID:
 	case AXP323_ID:
 	case AXP717_ID:
+	case AXP2101_ID:
 	case AXP15060_ID:
 		/* The DCDC PWM frequency seems to be fixed to 3 MHz. */
 		if (dcdcfreq != 0) {
@@ -1612,6 +1697,10 @@ static int axp20x_regulator_probe(struct platform_device *pdev)
 	case AXP15060_ID:
 		regulators = axp15060_regulators;
 		nregulators = AXP15060_REG_ID_MAX;
+		break;
+	case AXP2101_ID:
+		regulators = axp2101_regulators;
+		nregulators = AXP2101_REG_ID_MAX;
 		break;
 	default:
 		dev_err(&pdev->dev, "Unsupported AXP variant: %d\n",
