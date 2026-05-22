@@ -24,17 +24,137 @@
 		reg = <0x40000000 0x40000000>;
 	};
 
-	reg_vcc3v3: vcc3v3 {
-		compatible = "regulator-fixed";
-		regulator-name = "vcc3v3";
-		regulator-min-microvolt = <3300000>;
-		regulator-max-microvolt = <3300000>;
-		regulator-always-on;
+};
+
+&r_rsb {
+	status = "okay";
+
+	/*
+	 * boot0 switches the PMIC into RSB mode, so it is not reachable over
+	 * plain I2C (s_twi0); the vendor kernel also talks to it via RSB.
+	 */
+	axp2101: pmic@3a3 {
+		compatible = "x-powers,axp2101";
+		reg = <0x3a3>;
+		interrupt-parent = <&gic>;
+		interrupts = <GIC_SPI 104 IRQ_TYPE_LEVEL_HIGH>;
+
+		regulators {
+			/* 3.3 V main I/O rail */
+			reg_dcdc1: dcdc1 {
+				regulator-name = "vcc-3v3";
+				regulator-min-microvolt = <3300000>;
+				regulator-max-microvolt = <3300000>;
+				regulator-always-on;
+			};
+
+			/* CPU core supply */
+			reg_dcdc2: dcdc2 {
+				regulator-name = "vdd-cpua";
+				regulator-min-microvolt = <500000>;
+				regulator-max-microvolt = <1540000>;
+				regulator-always-on;
+			};
+
+			/* System / USB / HDMI 0.9 V */
+			reg_dcdc3: dcdc3 {
+				regulator-name = "vdd-sys";
+				regulator-min-microvolt = <920000>;
+				regulator-max-microvolt = <920000>;
+				regulator-always-on;
+			};
+
+			/* DRAM supply */
+			reg_dcdc4: dcdc4 {
+				regulator-name = "vcc-dram";
+				regulator-min-microvolt = <1360000>;
+				regulator-max-microvolt = <1360000>;
+				regulator-always-on;
+			};
+
+			reg_dcdc5: dcdc5 {
+				regulator-name = "vcc-dcdc5";
+				regulator-min-microvolt = <1200000>;
+				regulator-max-microvolt = <1200000>;
+			};
+
+			/* LPDDR / DRAM 1.8 V / PLL / AVCC */
+			reg_aldo1: aldo1 {
+				regulator-name = "vcc-pll";
+				regulator-min-microvolt = <1800000>;
+				regulator-max-microvolt = <1800000>;
+				regulator-always-on;
+			};
+
+			reg_aldo2: aldo2 {
+				regulator-name = "vcc-pe";
+				regulator-min-microvolt = <1800000>;
+				regulator-max-microvolt = <1800000>;
+			};
+
+			reg_aldo3: aldo3 {
+				regulator-name = "vcc-pl";
+				regulator-min-microvolt = <3300000>;
+				regulator-max-microvolt = <3300000>;
+			};
+
+			reg_aldo4: aldo4 {
+				regulator-name = "vcc-pf";
+				regulator-min-microvolt = <3300000>;
+				regulator-max-microvolt = <3300000>;
+			};
+
+			/* 1.8 V PC / various I/O */
+			reg_bldo1: bldo1 {
+				regulator-name = "vcc18-pc";
+				regulator-min-microvolt = <1800000>;
+				regulator-max-microvolt = <1800000>;
+				regulator-always-on;
+			};
+
+			reg_bldo2: bldo2 {
+				regulator-name = "avdd-csi";
+				regulator-min-microvolt = <3300000>;
+				regulator-max-microvolt = <3300000>;
+			};
+
+			/* CPU standby LDO */
+			reg_cpusldo: cpusldo {
+				regulator-name = "vdd-cpus";
+				regulator-min-microvolt = <900000>;
+				regulator-max-microvolt = <900000>;
+				regulator-always-on;
+			};
+
+			reg_dldo1: dldo1 {
+				regulator-name = "vcc-dldo1";
+				regulator-min-microvolt = <500000>;
+				regulator-max-microvolt = <500000>;
+			};
+
+			/* DVDD CSI 1.2 V */
+			reg_dldo2: dldo2 {
+				regulator-name = "dvdd-csi";
+				regulator-min-microvolt = <1200000>;
+				regulator-max-microvolt = <1200000>;
+			};
+		};
 	};
 };
 
+&pio {
+	vcc-pc-supply = <&reg_bldo1>;
+	vcc-pe-supply = <&reg_aldo2>;
+	vcc-pf-supply = <&reg_aldo4>;
+};
+
+&r_pio {
+	vcc-pl-supply = <&reg_aldo3>;
+};
+
 &mmc0 {
-	vmmc-supply = <&reg_vcc3v3>;
+	vmmc-supply = <&reg_dcdc1>;
+	vqmmc-supply = <&reg_aldo4>;
 	bus-width = <4>;
 	broken-cd;
 	max-frequency = <50000000>;
