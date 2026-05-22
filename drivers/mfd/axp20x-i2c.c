@@ -70,6 +70,7 @@ static const struct of_device_id axp20x_i2c_of_match[] = {
 	{ .compatible = "x-powers,axp803", .data = (void *)AXP803_ID },
 	{ .compatible = "x-powers,axp806", .data = (void *)AXP806_ID },
 	{ .compatible = "x-powers,axp15060", .data = (void *)AXP15060_ID },
+	{ .compatible = "x-powers,axp2101", .data = (void *)AXP2101_ID },
 	{ },
 };
 MODULE_DEVICE_TABLE(of, axp20x_i2c_of_match);
@@ -87,6 +88,7 @@ static const struct i2c_device_id axp20x_i2c_id[] = {
 	{ "axp803" },
 	{ "axp806" },
 	{ "axp15060" },
+	{ "axp2101" },
 	{ }
 };
 MODULE_DEVICE_TABLE(i2c, axp20x_i2c_id);
