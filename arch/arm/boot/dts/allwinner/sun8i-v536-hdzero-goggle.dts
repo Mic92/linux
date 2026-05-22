@@ -1,0 +1,31 @@
+// SPDX-License-Identifier: (GPL-2.0+ OR MIT)
+/*
+ * HDZero Goggle (Allwinner V536), minimal bring-up devicetree.
+ */
+
+/dts-v1/;
+#include "sun8i-v536.dtsi"
+
+/ {
+	model = "HDZero Goggle";
+	compatible = "hdzero,goggle", "allwinner,sun8i-v536";
+
+	aliases {
+		serial0 = &uart0;
+	};
+
+	chosen {
+		stdout-path = "serial0:115200n8";
+		bootargs = "earlycon=uart8250,mmio32,0x05000000 console=ttyS0,115200 loglevel=8";
+	};
+
+	memory@40000000 {
+		device_type = "memory";
+		reg = <0x40000000 0x40000000>;
+	};
+};
+
+&uart0 {
+	/* Pins are muxed by the boot loader until pinctrl support exists. */
+	status = "okay";
+};
