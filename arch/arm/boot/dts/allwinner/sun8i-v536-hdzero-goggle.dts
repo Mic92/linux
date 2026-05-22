@@ -69,3 +69,17 @@
 	/* Pins are muxed by the boot loader until pinctrl support exists. */
 	status = "okay";
 };
+
+/*
+ * USB-C port on USB0. The vendor board config uses port_type 0 (device
+ * only) with VBUS handled by the PMIC, so start in peripheral mode
+ * until ID/VBUS detection is wired up.
+ */
+&usb_otg {
+	dr_mode = "peripheral";
+	status = "okay";
+};
+
+&usbphy {
+	status = "okay";
+};
