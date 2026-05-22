@@ -71,6 +71,16 @@ config PINCTRL_SUN8I_V3S
 	default MACH_SUN8I
 	select PINCTRL_SUNXI
 
+config PINCTRL_SUN8I_V536
+	bool "Support for the Allwinner V536 PIO"
+	default MACH_SUN8I
+	select PINCTRL_SUNXI
+
+config PINCTRL_SUN8I_V536_R
+	bool "Support for the Allwinner V536 R-PIO"
+	default MACH_SUN8I
+	select PINCTRL_SUNXI
+
 config PINCTRL_SUN9I_A80
 	bool "Support for the Allwinner A80 PIO"
 	default MACH_SUN9I
