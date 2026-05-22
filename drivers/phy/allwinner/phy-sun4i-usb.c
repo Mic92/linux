@@ -979,6 +979,21 @@ static const struct sun4i_usb_phy_cfg sun8i_v3s_cfg = {
 	.phy0_dual_route = true,
 };
 
+/*
+ * V536 (BSP sun8iw16): PHYCTL at offset 0x10 of the phy_ctrl region
+ * (USBPHYC_REG_o_PHYCTL = 0x410 in the BSP), VBUSVLDEXT/SIDDQ handled
+ * through that register (BSP sunxi_udc_board.c), HCI PMU PHY_CTRL SIDDQ
+ * at bit 3 (BSP sunxi_hci.h), and OTG/HCI0 share PHY0 with routing via
+ * the OTG PHY_CFG register (BSP USBC_SelectPhyToHci/Device).
+ */
+static const struct sun4i_usb_phy_cfg sun8i_v536_cfg = {
+	.phyctl_offset = REG_PHYCTL_A33,
+	.dedicated_clocks = true,
+	.hci_phy_ctl_clear = PHY_CTL_SIDDQ,
+	.phy0_dual_route = true,
+	.siddq_in_base = true,
+};
+
 static const struct sun4i_usb_phy_cfg sun20i_d1_cfg = {
 	.phyctl_offset = REG_PHYCTL_A33,
 	.dedicated_clocks = true,
@@ -1024,6 +1039,7 @@ static const struct of_device_id sun4i_usb_phy_of_match[] = {
 	{ .compatible = "allwinner,sun8i-h3-usb-phy", .data = &sun8i_h3_cfg },
 	{ .compatible = "allwinner,sun8i-r40-usb-phy", .data = &sun8i_r40_cfg },
 	{ .compatible = "allwinner,sun8i-v3s-usb-phy", .data = &sun8i_v3s_cfg },
+	{ .compatible = "allwinner,sun8i-v536-usb-phy", .data = &sun8i_v536_cfg },
 	{ .compatible = "allwinner,sun20i-d1-usb-phy", .data = &sun20i_d1_cfg },
 	{ .compatible = "allwinner,sun50i-a64-usb-phy",
 	  .data = &sun50i_a64_cfg},
