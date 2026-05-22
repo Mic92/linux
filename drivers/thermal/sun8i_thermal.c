@@ -670,6 +670,24 @@ static const struct ths_thermal_chip sun50i_h5_ths = {
 	.calc_temp = sun50i_h5_calc_temp,
 };
 
+/*
+ * The V536 has four sensors (CPU, VE, ISP, DDR) and uses the same
+ * conversion coefficients as the H6 (the BSP formula
+ * (2794000 - 1000 * reg) / 14882 degrees C is identical).
+ */
+static const struct ths_thermal_chip sun8i_v536_ths = {
+	.sensor_num = 4,
+	.has_bus_clk_reset = true,
+	.ft_deviation = 7000,
+	.offset = 187744,
+	.scale = 672,
+	.temp_data_base = SUN50I_H6_THS_TEMP_DATA,
+	.calibrate = sun50i_h6_ths_calibrate,
+	.init = sun50i_h6_thermal_init,
+	.irq_ack = sun50i_h6_irq_ack,
+	.calc_temp = sun8i_ths_calc_temp,
+};
+
 static const struct ths_thermal_chip sun50i_h6_ths = {
 	.sensor_num = 2,
 	.has_bus_clk_reset = true,
@@ -716,6 +734,7 @@ static const struct of_device_id of_ths_match[] = {
 	{ .compatible = "allwinner,sun50i-a64-ths", .data = &sun50i_a64_ths },
 	{ .compatible = "allwinner,sun50i-a100-ths", .data = &sun50i_a100_ths },
 	{ .compatible = "allwinner,sun50i-h5-ths", .data = &sun50i_h5_ths },
+	{ .compatible = "allwinner,sun8i-v536-ths", .data = &sun8i_v536_ths },
 	{ .compatible = "allwinner,sun50i-h6-ths", .data = &sun50i_h6_ths },
 	{ .compatible = "allwinner,sun20i-d1-ths", .data = &sun20i_d1_ths },
 	{ .compatible = "allwinner,sun50i-h616-ths", .data = &sun50i_h616_ths },

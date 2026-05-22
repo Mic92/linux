@@ -41,6 +41,17 @@
 	status = "okay";
 };
 
+/* FPGA configuration flash */
+&spi0 {
+	status = "okay";
+
+	flash@0 {
+		compatible = "jedec,spi-nor";
+		reg = <0>;
+		spi-max-frequency = <50000000>;
+	};
+};
+
 &i2c1 {
 	status = "okay";
 };
