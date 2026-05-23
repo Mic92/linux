@@ -211,3 +211,13 @@
 &usbphy {
 	status = "okay";
 };
+
+&de {
+	status = "okay";
+};
+
+&vdpo {
+	pinctrl-names = "default";
+	pinctrl-0 = <&vdpo_pins>;
+	status = "okay";
+};
