@@ -467,6 +467,51 @@ static SUNXI_CCU_GATE(bus_ehci0_clk, "bus-ehci0", "ahb3", 0xa8c, BIT(4), 0);
 static SUNXI_CCU_GATE(bus_ehci1_clk, "bus-ehci1", "ahb3", 0xa8c, BIT(5), 0);
 static SUNXI_CCU_GATE(bus_otg_clk, "bus-otg", "ahb3", 0xa8c, BIT(8), 0);
 
+static const char * const de_parents[] = { "pll-de", "pll-periph0-2x" };
+static SUNXI_CCU_M_WITH_MUX_GATE(de_clk, "de", de_parents, 0x600,
+				 0, 4,		/* M */
+				 24, 1,		/* mux */
+				 BIT(31),	/* gate */
+				 CLK_SET_RATE_PARENT);
+static SUNXI_CCU_GATE(bus_de_clk, "bus-de", "psi-ahb1-ahb2",
+		      0x60c, BIT(0), 0);
+
+static SUNXI_CCU_GATE(bus_display_top_clk, "bus-display-top", "psi-ahb1-ahb2",
+		      0xb5c, BIT(0), 0);
+
+static const char * const tcon_lcd_parents[] = { "pll-video0",
+						 "pll-video0-4x" };
+static SUNXI_CCU_MUX_WITH_GATE(tcon_lcd_clk, "tcon-lcd", tcon_lcd_parents,
+			       0xb60,
+			       24, 3,		/* mux */
+			       BIT(31),		/* gate */
+			       CLK_SET_RATE_PARENT);
+static SUNXI_CCU_GATE(bus_tcon_lcd_clk, "bus-tcon-lcd", "psi-ahb1-ahb2",
+		      0xb7c, BIT(0), 0);
+
+static const char * const tcon_tv_parents[] = { "pll-video0",
+						"pll-video0-4x" };
+static SUNXI_CCU_MP_WITH_MUX_GATE(tcon_tv_clk, "tcon-tv", tcon_tv_parents,
+				  0xb80,
+				  0, 4,		/* M */
+				  8, 2,		/* P */
+				  24, 3,	/* mux */
+				  BIT(31),	/* gate */
+				  CLK_SET_RATE_PARENT);
+static SUNXI_CCU_GATE(bus_tcon_tv_clk, "bus-tcon-tv", "psi-ahb1-ahb2",
+		      0xb9c, BIT(0), 0);
+
+static const char * const vdpo_parents[] = { "pll-video0",
+					     "pll-video0-4x" };
+static SUNXI_CCU_MP_WITH_MUX_GATE(vdpo_clk, "vdpo", vdpo_parents, 0xc50,
+				  0, 4,		/* M */
+				  8, 2,		/* P */
+				  24, 3,	/* mux */
+				  BIT(31),	/* gate */
+				  CLK_SET_RATE_PARENT);
+static SUNXI_CCU_GATE(bus_vdpo_clk, "bus-vdpo", "psi-ahb1-ahb2",
+		      0xc5c, BIT(0), 0);
+
 static CLK_FIXED_FACTOR(osc12M_clk, "osc12M", "osc24M", 2, 1, 0);
 
 static CLK_FIXED_FACTOR_HW(pll_periph0_2x_clk, "pll-periph0-2x",
@@ -560,6 +605,15 @@ static struct ccu_common *sun8i_v536_ccu_clks[] = {
 	&bus_ehci0_clk.common,
 	&bus_ehci1_clk.common,
 	&bus_otg_clk.common,
+	&de_clk.common,
+	&bus_de_clk.common,
+	&bus_display_top_clk.common,
+	&tcon_lcd_clk.common,
+	&bus_tcon_lcd_clk.common,
+	&tcon_tv_clk.common,
+	&bus_tcon_tv_clk.common,
+	&vdpo_clk.common,
+	&bus_vdpo_clk.common,
 };
 
 static struct clk_hw_onecell_data sun8i_v536_hw_clks = {
@@ -651,6 +705,15 @@ static struct clk_hw_onecell_data sun8i_v536_hw_clks = {
 		[CLK_BUS_EHCI0]	= &bus_ehci0_clk.common.hw,
 		[CLK_BUS_EHCI1]	= &bus_ehci1_clk.common.hw,
 		[CLK_BUS_OTG]	= &bus_otg_clk.common.hw,
+		[CLK_DE]	= &de_clk.common.hw,
+		[CLK_BUS_DE]	= &bus_de_clk.common.hw,
+		[CLK_BUS_DISPLAY_TOP]	= &bus_display_top_clk.common.hw,
+		[CLK_TCON_LCD]	= &tcon_lcd_clk.common.hw,
+		[CLK_BUS_TCON_LCD]	= &bus_tcon_lcd_clk.common.hw,
+		[CLK_TCON_TV]	= &tcon_tv_clk.common.hw,
+		[CLK_BUS_TCON_TV]	= &bus_tcon_tv_clk.common.hw,
+		[CLK_VDPO]	= &vdpo_clk.common.hw,
+		[CLK_BUS_VDPO]	= &bus_vdpo_clk.common.hw,
 	},
 	.num	= CLK_NUMBER,
 };
@@ -697,6 +760,11 @@ static const struct ccu_reset_map sun8i_v536_ccu_resets[] = {
 	[RST_BUS_EHCI0]	= { 0xa8c, BIT(20) },
 	[RST_BUS_EHCI1]	= { 0xa8c, BIT(21) },
 	[RST_BUS_OTG]	= { 0xa8c, BIT(24) },
+	[RST_BUS_DE]	= { 0x60c, BIT(16) },
+	[RST_BUS_DISPLAY_TOP]	= { 0xb5c, BIT(16) },
+	[RST_BUS_TCON_LCD]	= { 0xb7c, BIT(16) },
+	[RST_BUS_TCON_TV]	= { 0xb9c, BIT(16) },
+	[RST_BUS_VDPO]	= { 0xc5c, BIT(16) },
 };
 
 static const struct sunxi_ccu_desc sun8i_v536_ccu_desc = {

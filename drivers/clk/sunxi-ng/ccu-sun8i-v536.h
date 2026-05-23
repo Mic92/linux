@@ -9,6 +9,6 @@
 #include <dt-bindings/clock/sun8i-v536-ccu.h>
 #include <dt-bindings/reset/sun8i-v536-ccu.h>
 
-#define CLK_NUMBER		87
+#define CLK_NUMBER		96
 
 #endif /* _CCU_SUN8I_V536_H_ */

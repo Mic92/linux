@@ -47,5 +47,10 @@
 #define RST_BUS_EHCI0		38
 #define RST_BUS_EHCI1		39
 #define RST_BUS_OTG		40
+#define RST_BUS_DE		41
+#define RST_BUS_DISPLAY_TOP		42
+#define RST_BUS_TCON_LCD		43
+#define RST_BUS_TCON_TV		44
+#define RST_BUS_VDPO		45
 
 #endif /* _DT_BINDINGS_RST_SUN8I_V536_H_ */

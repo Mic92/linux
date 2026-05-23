@@ -93,5 +93,14 @@
 #define CLK_BUS_EHCI0		84
 #define CLK_BUS_EHCI1		85
 #define CLK_BUS_OTG		86
+#define CLK_DE			87
+#define CLK_BUS_DE		88
+#define CLK_BUS_DISPLAY_TOP		89
+#define CLK_TCON_LCD		90
+#define CLK_BUS_TCON_LCD		91
+#define CLK_TCON_TV		92
+#define CLK_BUS_TCON_TV		93
+#define CLK_VDPO		94
+#define CLK_BUS_VDPO		95
 
 #endif /* _DT_BINDINGS_CLK_SUN8I_V536_H_ */
