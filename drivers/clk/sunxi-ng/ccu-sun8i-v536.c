@@ -724,11 +724,25 @@ static const u32 sun8i_v536_pll_regs[] = {
 	SUN8I_V536_PLL_CSI_REG,
 };
 
+static struct ccu_pll_nb sun8i_v536_pll_cpu_nb = {
+	.common	= &pll_cpux_clk.common,
+	/* copy from pll_cpux_clk */
+	.enable	= SUN8I_V536_PLL_OUTPUT_ENABLE,
+	.lock	= SUN8I_V536_PLL_LOCK,
+};
+
+static struct ccu_mux_nb sun8i_v536_cpu_nb = {
+	.common		= &cpux_clk.common,
+	.cm		= &cpux_clk.mux,
+	.delay_us	= 1, /* > 8 clock cycles at 24 MHz */
+	.bypass_index	= 0, /* index of 24 MHz oscillator */
+};
+
 static int sun8i_v536_ccu_probe(struct platform_device *pdev)
 {
 	void __iomem *reg;
 	u32 val;
-	int i;
+	int i, ret;
 
 	reg = devm_platform_ioremap_resource(pdev, 0);
 	if (IS_ERR(reg))
@@ -745,7 +759,18 @@ static int sun8i_v536_ccu_probe(struct platform_device *pdev)
 		writel(val, reg + sun8i_v536_pll_regs[i]);
 	}
 
-	return devm_sunxi_ccu_probe(&pdev->dev, reg, &sun8i_v536_ccu_desc);
+	ret = devm_sunxi_ccu_probe(&pdev->dev, reg, &sun8i_v536_ccu_desc);
+	if (ret)
+		return ret;
+
+	/* Gate then ungate PLL CPU after any rate changes */
+	ccu_pll_notifier_register(&sun8i_v536_pll_cpu_nb);
+
+	/* Reparent CPU during PLL CPU rate changes */
+	ccu_mux_notifier_register(pll_cpux_clk.common.hw.clk,
+				  &sun8i_v536_cpu_nb);
+
+	return 0;
 }
 
 static const struct of_device_id sun8i_v536_ccu_ids[] = {
