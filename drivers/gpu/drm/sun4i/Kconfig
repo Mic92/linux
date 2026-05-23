@@ -78,6 +78,15 @@ config DRM_SUN8I_MIXER
 	  graphics mixture and feed graphics to TCON, If M is
 	  selected the module will be called sun8i-mixer.
 
+config DRM_SUN8I_VDPO
+	tristate "Support for Allwinner V536 VDPO BT.1120 output"
+	default DRM_SUN4I
+	help
+	  Choose this option if you have an Allwinner V536 SoC and want
+	  to use the VDPO (Video Data Parallel Output) block, which
+	  outputs BT.1120 parallel digital video. If M is selected the
+	  module will be called sun8i-vdpo.
+
 config DRM_SUN8I_TCON_TOP
 	tristate
 	default DRM_SUN4I if DRM_SUN8I_MIXER!=n
