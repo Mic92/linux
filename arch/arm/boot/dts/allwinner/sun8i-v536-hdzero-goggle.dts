@@ -26,6 +26,14 @@
 
 };
 
+&cpu0 {
+	cpu-supply = <&reg_dcdc2>;
+};
+
+&cpu1 {
+	cpu-supply = <&reg_dcdc2>;
+};
+
 &r_rsb {
 	status = "okay";
 
