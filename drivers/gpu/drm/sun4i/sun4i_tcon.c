@@ -1525,6 +1525,15 @@ static const struct sun4i_tcon_quirks sun8i_v3s_quirks = {
 	.dclk_min_div		= 1,
 };
 
+static const struct sun4i_tcon_quirks sun8i_v536_lcd_quirks = {
+	.has_channel_0		= true,
+	.dclk_min_div		= 1,
+};
+
+static const struct sun4i_tcon_quirks sun8i_v536_tv_quirks = {
+	.has_channel_1		= true,
+};
+
 static const struct sun4i_tcon_quirks sun9i_a80_tcon_lcd_quirks = {
 	.has_channel_0		= true,
 	.needs_edp_reset	= true,
@@ -1557,6 +1566,8 @@ const struct of_device_id sun4i_tcon_of_table[] = {
 	{ .compatible = "allwinner,sun8i-a83t-tcon-tv", .data = &sun8i_a83t_tv_quirks },
 	{ .compatible = "allwinner,sun8i-r40-tcon-tv", .data = &sun8i_r40_tv_quirks },
 	{ .compatible = "allwinner,sun8i-v3s-tcon", .data = &sun8i_v3s_quirks },
+	{ .compatible = "allwinner,sun8i-v536-tcon-lcd", .data = &sun8i_v536_lcd_quirks },
+	{ .compatible = "allwinner,sun8i-v536-tcon-tv", .data = &sun8i_v536_tv_quirks },
 	{ .compatible = "allwinner,sun9i-a80-tcon-lcd", .data = &sun9i_a80_tcon_lcd_quirks },
 	{ .compatible = "allwinner,sun9i-a80-tcon-tv", .data = &sun9i_a80_tcon_tv_quirks },
 	{ .compatible = "allwinner,sun20i-d1-tcon-lcd", .data = &sun20i_d1_lcd_quirks },

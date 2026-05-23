@@ -278,6 +278,10 @@ static const struct sun8i_tcon_top_quirks sun50i_h6_tcon_top_quirks = {
 	/* Nothing special */
 };
 
+static const struct sun8i_tcon_top_quirks sun8i_v536_tcon_top_quirks = {
+	/* Nothing special */
+};
+
 /* sun4i_drv uses this list to check if a device node is a TCON TOP */
 const struct of_device_id sun8i_tcon_top_of_table[] = {
 	{
@@ -291,6 +295,10 @@ const struct of_device_id sun8i_tcon_top_of_table[] = {
 	{
 		.compatible = "allwinner,sun50i-h6-tcon-top",
 		.data = &sun50i_h6_tcon_top_quirks
+	},
+	{
+		.compatible = "allwinner,sun8i-v536-tcon-top",
+		.data = &sun8i_v536_tcon_top_quirks
 	},
 	{ /* sentinel */ }
 };
